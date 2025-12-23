@@ -2,36 +2,32 @@ import requests
 from twilio.rest import Client
 from datetime import datetime
 import os
-import sys
 
 # ======================
-# LOGGING (CRITICAL FOR SCHEDULER)
+# SAFE LOGGING (CLOUD)
 # ======================
-BASE_DIR = r"C:\Users\sande\OneDrive\Desktop\twilio_whatsapp"
-LOG_FILE = os.path.join(BASE_DIR, "task_log.txt")
-
 def log(msg):
-    with open(LOG_FILE, "a", encoding="utf-8") as f:
-        f.write(f"[{datetime.now()}] {msg}\n")
+    print(f"[{datetime.now()}] {msg}")
 
 log("===== SCRIPT STARTED =====")
-log(f"Python: {sys.executable}")
-log(f"Working Dir: {os.getcwd()}")
 
 # ======================
-# ADZUNA CONFIG
+# READ SECRETS (CLOUD)
 # ======================
-ADZUNA_APP_ID = "bd632827"
-ADZUNA_APP_KEY = "65f164fc7fceeea66049b21021c4dedc"
+ADZUNA_APP_ID = os.getenv("ADZUNA_APP_ID")
+ADZUNA_APP_KEY = os.getenv("ADZUNA_APP_KEY")
 
-# ======================
-# TWILIO CONFIG
-# ======================
-TWILIO_ACCOUNT_SID = "AC0fa5b42d5365035840a3c42e130e55ea"
-TWILIO_AUTH_TOKEN = "7cc94c43881ce9a26293ddd147947ff2"
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 
 FROM_WHATSAPP = "whatsapp:+14155238886"
 TO_WHATSAPP = "whatsapp:+919606429957"
+
+# ======================
+# VALIDATION
+# ======================
+if not all([ADZUNA_APP_ID, ADZUNA_APP_KEY, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN]):
+    raise RuntimeError("❌ Missing environment variables (Secrets not loaded)")
 
 # ======================
 # STRICT ENTRY-LEVEL RULES
@@ -46,15 +42,14 @@ EXCLUDE_KEYWORDS = [
     "manager", "architect", "sr", "ii", "iii", "3+"
 ]
 
-def is_entry_level(text: str) -> bool:
+def is_entry_level(text):
     text = text.lower()
     return any(i in text for i in INCLUDE_KEYWORDS) and not any(e in text for e in EXCLUDE_KEYWORDS)
 
 # ======================
-# FETCH JOBS (SAFE)
+# FETCH JOBS
 # ======================
 url = "https://api.adzuna.com/v1/api/jobs/in/search/1"
-
 params = {
     "app_id": ADZUNA_APP_ID,
     "app_key": ADZUNA_APP_KEY,
@@ -66,24 +61,19 @@ params = {
 try:
     response = requests.get(url, params=params, timeout=20)
     response.raise_for_status()
-    data = response.json()
-    raw_jobs = data.get("results", [])
-    log(f"Fetched {len(raw_jobs)} jobs from Adzuna")
+    raw_jobs = response.json().get("results", [])
+    log(f"Fetched {len(raw_jobs)} jobs")
 
 except Exception as e:
     log(f"ERROR fetching jobs: {e}")
     raw_jobs = []
 
 # ======================
-# FILTER ENTRY-LEVEL ONLY
+# FILTER ENTRY LEVEL
 # ======================
 filtered_jobs = []
-
 for job in raw_jobs:
-    title = job.get("title", "")
-    description = job.get("description", "")
-    combined = f"{title} {description}"
-
+    combined = f"{job.get('title','')} {job.get('description','')}"
     if is_entry_level(combined):
         filtered_jobs.append(job)
 
@@ -122,9 +112,9 @@ try:
         to=TO_WHATSAPP,
         body=message_body
     )
-    log("WhatsApp message sent successfully")
+    log("✅ WhatsApp message sent")
 
 except Exception as e:
-    log(f"ERROR sending WhatsApp: {e}")
+    log(f"❌ WhatsApp send error: {e}")
 
-log("===== SCRIPT FINISHED =====\n")
+log("===== SCRIPT FINISHED =====")
