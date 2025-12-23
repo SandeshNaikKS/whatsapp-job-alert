@@ -2,7 +2,7 @@ name: Daily WhatsApp Job Alert
 
 on:
   schedule:
-    - cron: '30 0 * * *'   # 6:00 AM IST (UTC +5:30)
+    - cron: '*/5 * * * *'   # RUN EVERY 5 MINUTES
   workflow_dispatch:
 
 jobs:
@@ -10,17 +10,28 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1️⃣ Checkout repository
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 2️⃣ Setup Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
+      # 3️⃣ Install dependencies
       - name: Install dependencies
         run: pip install requests twilio
 
+      # 4️⃣ Restore cache (remember already-sent jobs)
+      - name: Restore job cache
+        uses: actions/cache@v4
+        with:
+          path: seen_jobs.txt
+          key: seen-jobs-cache
+
+      # 5️⃣ Run Python job alert script
       - name: Run job alert script
         env:
           ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
@@ -28,3 +39,10 @@ jobs:
           TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
           TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
         run: python auto_fetch_and_send.py
+
+      # 6️⃣ Save cache (update sent jobs list)
+      - name: Save job cache
+        uses: actions/cache@v4
+        with:
+          path: seen_jobs.txt
+          key: seen-jobs-cache
