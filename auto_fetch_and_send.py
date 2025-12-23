@@ -47,6 +47,18 @@ def is_entry_level(text):
     return any(i in text for i in INCLUDE_KEYWORDS) and not any(e in text for e in EXCLUDE_KEYWORDS)
 
 # ======================
+# LOAD SEEN JOBS (DUPLICATE PREVENTION)
+# ======================
+SEEN_FILE = "seen_jobs.txt"
+seen_jobs = set()
+
+if os.path.exists(SEEN_FILE):
+    with open(SEEN_FILE, "r") as f:
+        seen_jobs = set(f.read().splitlines())
+
+log(f"Loaded {len(seen_jobs)} seen jobs")
+
+# ======================
 # FETCH JOBS
 # ======================
 url = "https://api.adzuna.com/v1/api/jobs/in/search/1"
@@ -69,52 +81,49 @@ except Exception as e:
     raw_jobs = []
 
 # ======================
-# FILTER ENTRY LEVEL
+# FILTER NEW ENTRY-LEVEL JOBS ONLY
 # ======================
-filtered_jobs = []
+new_jobs = []
+
 for job in raw_jobs:
+    job_id = job.get("id")
     combined = f"{job.get('title','')} {job.get('description','')}"
-    if is_entry_level(combined):
-        filtered_jobs.append(job)
 
-log(f"Filtered to {len(filtered_jobs)} entry-level jobs")
+    if job_id and job_id not in seen_jobs and is_entry_level(combined):
+        new_jobs.append(job)
+        seen_jobs.add(job_id)
+
+log(f"New jobs found: {len(new_jobs)}")
 
 # ======================
-# BUILD MESSAGE
+# SEND WHATSAPP FOR NEW JOBS
 # ======================
-if filtered_jobs:
-    message_body = "🔥 Fresher / Entry-Level Software Jobs (India)\n\n"
-    message_body += f"Found {len(filtered_jobs)} job(s):\n\n"
+client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
-    for i, job in enumerate(filtered_jobs, 1):
-        message_body += (
-            f"{i}. {job.get('title','N/A')}\n"
-            f"Company: {job.get('company',{}).get('display_name','N/A')}\n"
-            f"Location: {job.get('location',{}).get('display_name','India')}\n"
-            f"Apply: {job.get('redirect_url','')}\n\n"
-        )
-else:
+for job in new_jobs:
     message_body = (
-        "🔥 Fresher / Entry-Level Software Jobs (India)\n\n"
-        "No new verified fresher or entry-level jobs today.\n\n"
-        "Priority Cities:\n"
-        "• Bangalore\n• Chennai\n• Hyderabad\n\n"
-        "— Auto Job Alert"
+        "🚨 NEW JOB JUST POSTED\n\n"
+        f"Role: {job.get('title','N/A')}\n"
+        f"Company: {job.get('company',{}).get('display_name','N/A')}\n"
+        f"Location: {job.get('location',{}).get('display_name','India')}\n\n"
+        f"Apply now:\n{job.get('redirect_url','')}"
     )
 
-# ======================
-# SEND WHATSAPP
-# ======================
-try:
-    client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-    client.messages.create(
-        from_=FROM_WHATSAPP,
-        to=TO_WHATSAPP,
-        body=message_body
-    )
-    log("✅ WhatsApp message sent")
+    try:
+        client.messages.create(
+            from_=FROM_WHATSAPP,
+            to=TO_WHATSAPP,
+            body=message_body
+        )
+        log("✅ WhatsApp sent for new job")
 
-except Exception as e:
-    log(f"❌ WhatsApp send error: {e}")
+    except Exception as e:
+        log(f"❌ WhatsApp send error: {e}")
+
+# ======================
+# SAVE SEEN JOBS
+# ======================
+with open(SEEN_FILE, "w") as f:
+    f.write("\n".join(seen_jobs))
 
 log("===== SCRIPT FINISHED =====")
